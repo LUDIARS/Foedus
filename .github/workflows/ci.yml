@@ -1,0 +1,39 @@
+# Foedus 自身の CI
+#
+# push / pull_request (main) で typecheck → build → test を回す。
+# Foedus は本番依存を持たない (esbuild は devDependency 兼 runtime) ため
+# npm audit --omit=dev は対象が無く、ここでは実施しない。
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ci-check:
+    name: CI Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24.14.1"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build CLI bundle
+        run: npm run build
+
+      - name: Run tests
+        run: npm test

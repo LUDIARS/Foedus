@@ -1,0 +1,126 @@
+# Foedus 横断契約レビュー (定期 + 手動)
+#
+# LUDIARS の各サービスを sibling 配置で checkout し、Foedus の contract-check を
+# `--root <scan-root>` 配下に向けて実行する。critical/high 違反でジョブを fail させる
+# 連結契約のゲート。
+#
+# トリガ:
+#   - schedule: 毎週月曜 08:00 JST (= 日曜 23:00 UTC)。GitHub Actions の cron は UTC。
+#   - workflow_dispatch: 手動実行。
+#
+# スキャン対象リポ (LUDIARS org):
+#   - Cernere     (public) … registry / OIDC / 個人データ境界の権威
+#   - Corpus      (public) … Hub 連結設定
+#   - VantanHub   (private) … Hub 連結設定。下記 PAT が無いと checkout 不可
+#   - Aedilis     (public) … server/corpus.ts 保有サービス (provider)
+#   - Bibliotheca (public) … server/corpus.ts 保有サービス (provider)
+#
+# private リポ (VantanHub) の扱い:
+#   public リポは既定の GITHUB_TOKEN / 匿名 clone で取得できるが、private の
+#   VantanHub は read 権限を持つ PAT が必要。Secrets に `LUDIARS_REPO_TOKEN`
+#   (org repo:read 相当の Fine-grained PAT) を設定すると VantanHub も対象に含める。
+#   未設定の場合は **無言で落とさず** ::warning:: を出して VantanHub をスキップし、
+#   残りの public リポのみで契約チェックを実行する (RULE_CODE §7.1: 無言フォールバック禁止)。
+
+name: Scheduled Contract Review
+
+on:
+  schedule:
+    # 毎週月曜 08:00 JST = 日曜 23:00 UTC
+    - cron: "0 23 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract-review:
+    name: Cross-repo Contract Check
+    runs-on: ubuntu-latest
+    steps:
+      # ── Foedus (検査器) を foedus/ に checkout して build ────────────────────
+      - name: Checkout Foedus
+        uses: actions/checkout@v6
+        with:
+          path: foedus
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24.14.1"
+          cache: npm
+          cache-dependency-path: foedus/package-lock.json
+
+      - name: Build Foedus
+        working-directory: foedus
+        run: |
+          npm ci
+          npm run build
+
+      # ── スキャン対象リポを scan-root/<Repo> に sibling 配置 ─────────────────
+      # public リポは LUDIARS_REPO_TOKEN があればそれを、無ければ既定トークンを使う。
+      - name: Checkout Cernere
+        uses: actions/checkout@v6
+        with:
+          repository: LUDIARS/Cernere
+          path: scan-root/Cernere
+          token: ${{ secrets.LUDIARS_REPO_TOKEN || github.token }}
+
+      - name: Checkout Corpus
+        uses: actions/checkout@v6
+        with:
+          repository: LUDIARS/Corpus
+          path: scan-root/Corpus
+          token: ${{ secrets.LUDIARS_REPO_TOKEN || github.token }}
+
+      - name: Checkout Aedilis
+        uses: actions/checkout@v6
+        with:
+          repository: LUDIARS/Aedilis
+          path: scan-root/Aedilis
+          token: ${{ secrets.LUDIARS_REPO_TOKEN || github.token }}
+
+      - name: Checkout Bibliotheca
+        uses: actions/checkout@v6
+        with:
+          repository: LUDIARS/Bibliotheca
+          path: scan-root/Bibliotheca
+          token: ${{ secrets.LUDIARS_REPO_TOKEN || github.token }}
+
+      # ── private: VantanHub。PAT がある時のみ checkout ──────────────────────
+      - name: Checkout VantanHub (private)
+        if: ${{ secrets.LUDIARS_REPO_TOKEN != '' }}
+        uses: actions/checkout@v6
+        with:
+          repository: LUDIARS/VantanHub
+          path: scan-root/VantanHub
+          token: ${{ secrets.LUDIARS_REPO_TOKEN }}
+
+      - name: Note VantanHub skipped (no PAT)
+        if: ${{ secrets.LUDIARS_REPO_TOKEN == '' }}
+        run: |
+          echo "::warning title=VantanHub skipped::LUDIARS_REPO_TOKEN secret 未設定のため private リポ VantanHub を契約チェック対象から除外しました。Hub 連結 (Corpus 側) のみ検査されます。VantanHub も対象に含めるには repo:read 権限の Fine-grained PAT を LUDIARS_REPO_TOKEN として設定してください。"
+
+      # ── 横断契約チェック ────────────────────────────────────────────────────
+      # --ci: critical/high 違反があれば exit 1 (= ジョブ fail = ゲート)。
+      # 出力 (violations.json / CONTRACT.md) は always() で artifact 保存する。
+      - name: Run contract-check
+        id: check
+        run: |
+          node foedus/dist/cli.js contract-check \
+            --root scan-root \
+            --json --md --ci \
+            --out artifacts
+
+      - name: Upload contract report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: foedus-contract-report
+          path: artifacts/
+          if-no-files-found: warn
+
+      # 将来 Discord 通知を足す場合はここに step を追加する:
+      #   - high 検出時 (steps.check.outcome == 'failure') に
+      #     artifacts/CONTRACT.md を要約して Discord webhook へ POST する。
+      #   secrets.DISCORD_WEBHOOK_URL を使い、UnityFoundation の
+      #   script/discord-notify.js のような送信ヘルパを Foedus 側に置く想定。
