@@ -38,6 +38,12 @@ describe('contract pipeline (fixtures)', () => {
     expect(bySubject(active, 'H-LINK-02')).toEqual(['aedilis']);
   });
 
+  it('H-LINK-02: plugin proxy 経由 (aedilis) は TokenProvider バイパスを指摘', () => {
+    const h2 = active.find((v) => v.id === 'H-LINK-02' && v.subject === 'aedilis');
+    expect(h2?.message).toMatch(/plugin proxy/);
+    expect(h2?.evidence).toContain('VantanHub/plugins/shared.ts');
+  });
+
   it('H-LINK-07: aedilis の corpusApi=2 > Corpus supportedCorpusApi=1', () => {
     expect(bySubject(active, 'H-LINK-07')).toEqual(['aedilis']);
   });

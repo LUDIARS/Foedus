@@ -1,8 +1,8 @@
 // 抽出器: Cernere のデータ境界 (持つ / 持たない) と個人/機微カラム。
 //
 // 入力:
-//  - `Cernere/spec/data/*.md` の「持つ / 持たない」記述 (境界文書)。 見つから
-//    なければ holds/notHolds は空のまま (C-DATA-07 が skipped を出す根拠)。
+//  - `Cernere/spec/data/*.md` の境界文書 (「持つ / 持たない」または「含む / 除く」)。
+//    見つからなければ holds/notHolds は空のまま (C-DATA-07 が skipped を出す根拠)。
 //  - `Cernere/server/src/db/schema.ts` の drizzle カラム定義から個人/機微カラムを抽出。
 //
 // schema.ts は Cernere を「個人データ単一情報源」とするための機微カラム台帳。
@@ -20,8 +20,16 @@ export interface BoundaryExtract {
   personalDataColumns: ColumnRef[];
 }
 
-const HOLDS_RE = /([^\n。]*持つ[^\n。]*)/g;
-const NOT_HOLDS_RE = /([^\n。]*持たない[^\n。]*)/g;
+// 境界文書の語彙は一定でない。 「持つ/持たない」だけでなく「含む/除く」(太字マーカー)
+// も拾う。 含む/除く は太字 `**含む**` 等に限定し「本書に含める」等の散文誤検出を避ける。
+const NOT_HOLDS_PATTERNS = [
+  /([^\n。]*持たない[^\n。]*)/g,
+  /(\*\*\s*除く[^\n]*)/g,
+];
+const HOLDS_PATTERNS = [
+  /([^\n。]*持つ[^\n。]*)/g,
+  /(\*\*\s*含む\s*\*\*[：:][^\n]*)/g,
+];
 
 // drizzle: `export const users = pgTable("users", {` ブロックを切り出す。
 const PG_TABLE_RE = /pgTable\(\s*["'`]([a-zA-Z0-9_]+)["'`]\s*,\s*\{/g;
@@ -39,19 +47,23 @@ export function extractCernereBoundary(root: string): BoundaryExtract {
     const md = readText(file);
     if (!md) continue;
     let matched = false;
-    for (const m of md.matchAll(NOT_HOLDS_RE)) {
-      const line = m[1]?.trim();
-      if (line) {
-        notHolds.push(line);
-        matched = true;
+    for (const re of NOT_HOLDS_PATTERNS) {
+      for (const m of md.matchAll(re)) {
+        const line = m[1]?.trim();
+        if (line) {
+          notHolds.push(line);
+          matched = true;
+        }
       }
     }
-    // 「持たない」を先に拾い、 残りの「持つ」のみ holds へ (二重計上回避)。
-    for (const m of md.matchAll(HOLDS_RE)) {
-      const line = m[1]?.trim();
-      if (line && !line.includes('持たない')) {
-        holds.push(line);
-        matched = true;
+    // 「持たない/除く」を先に拾い、 残りの「持つ/含む」のみ holds へ (二重計上回避)。
+    for (const re of HOLDS_PATTERNS) {
+      for (const m of md.matchAll(re)) {
+        const line = m[1]?.trim();
+        if (line && !line.includes('持たない') && !/\*\*\s*除く/.test(line)) {
+          holds.push(line);
+          matched = true;
+        }
       }
     }
     if (matched) docFiles.push(file.split(/[\\/]/).slice(-1)[0] ?? file);
