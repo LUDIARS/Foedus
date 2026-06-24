@@ -44,10 +44,13 @@ describe('cernere-registry', () => {
 });
 
 describe('cernere-boundary', () => {
-  it('持つ/持たない記述と機微カラムを抽出', () => {
+  it('持つ/持たない + 含む/除く 記述と機微カラムを抽出', () => {
     const b = extractCernereBoundary(ROOT);
     expect(b.holds.length).toBeGreaterThan(0);
     expect(b.notHolds.length).toBeGreaterThan(0);
+    // 「含む / 除く」語彙も拾う (C-DATA-07 誤検知の修正)
+    expect(b.holds.some((h) => h.includes('含む'))).toBe(true);
+    expect(b.notHolds.some((h) => h.includes('除く'))).toBe(true);
     const cols = b.personalDataColumns.map((c) => `${c.table}.${c.column}`);
     expect(cols).toContain('users.email');
     expect(cols).toContain('users.totp_secret');

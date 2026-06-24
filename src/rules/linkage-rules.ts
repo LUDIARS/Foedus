@@ -79,13 +79,46 @@ export function hLink01(g: ContractGraph): Violation[] {
   return out;
 }
 
-/** H-LINK-02 auth モード整合: project-token 要求だが hub 既定が passthrough。 */
+/**
+ * H-LINK-02 auth モード整合: project-token 要求 leaf がトークンを受理できない。
+ *
+ * 2 つの不成立要因を見る:
+ *  - token-mode 不一致: Hub 既定が passthrough のままで project-token を発行しない。
+ *  - **plugin proxy バイパス**: VantanHub plugin proxy 経路は TokenProvider を経由せず
+ *    Bearer を素通しするため、 token-mode を cernere-project-token にしても発行されない。
+ *    この場合は mode が正しくても発火する (plugin proxy 側の配線が必要)。
+ */
 export function hLink02(g: ContractGraph): Violation[] {
   const out: Violation[] = [];
   const hubMode = g.hub.corpus.tokenModeDefault;
+  const modeOk = hubMode === 'cernere-project-token';
   for (const svc of g.services) {
     if (svc.manifest?.auth !== 'cernere-project-token') continue;
-    if (hubMode === 'cernere-project-token') continue;
+    const key = svc.manifest?.cernereProjectKey ?? svc.manifest?.service ?? svc.repo;
+    const viaPlugin = g.hub.vantanhub.plugins.some((p) => p.connectsTo === key);
+
+    // mode が正しく、 かつ plugin proxy 経由でないなら受理経路は成立 → 指摘なし。
+    if (modeOk && !viaPlugin) continue;
+
+    if (viaPlugin) {
+      out.push({
+        id: 'H-LINK-02',
+        severity: 'high',
+        category: 'linkage-contract',
+        subject: svc.manifest?.service ?? svc.repo,
+        message: `manifest.auth='cernere-project-token' だが、 ${key} は VantanHub の plugin proxy 経路で中継される。 plugin proxy は Corpus の TokenProvider を経由せず受信 Bearer を素通しするため、 Hub token-mode を '${hubMode}'→cernere-project-token に変えても project-token は発行されず leaf は受理できない。 plugin proxy 側 (shared.ts) の配線が必要。`,
+        evidence: [
+          svc.manifestFile ?? `${svc.repo}/server/corpus.ts`,
+          'VantanHub/plugins/shared.ts',
+          g.hub.corpus.sources.tokenMode,
+        ],
+        expected: 'plugin proxy が TokenProvider 経由で project-token を発行して中継する',
+        actual: `plugin proxy が Bearer 素通し (Hub token-mode='${hubMode}')`,
+        status: 'violation',
+      });
+      continue;
+    }
+
     out.push({
       id: 'H-LINK-02',
       severity: 'high',
