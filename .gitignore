@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.log
+.env
+.env.*
+!.env.example
+
+# 出力サンプル以外の生成物は追跡しない (data/ アンカーは残す)
+data/out/

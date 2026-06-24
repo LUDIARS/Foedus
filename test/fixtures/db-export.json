@@ -1,0 +1,11 @@
+{
+  "managedProjects": [{ "key": "aedilis", "isActive": true }],
+  "oidcClients": [
+    {
+      "clientId": "cf-access",
+      "redirectUris": ["https://team.cloudflareaccess.com/cdn-cgi/access/callback"],
+      "scopes": ["openid", "email", "profile"]
+    }
+  ],
+  "relayPairs": [{ "from": "legatus", "to": "actio", "bidirectional": true }]
+}

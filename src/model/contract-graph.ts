@@ -1,0 +1,161 @@
+// 中間表現 (ContractGraph) と関連型 — 設計書 §2.2 / §2.3。
+//
+// 抽出器が組み立て、 ルールが純関数で評価する単一の事実モデル。 ここには
+// 振る舞いを持たせない (型と列挙のみ)。 ColumnFlag は **閉じた enum** であり
+// 分類は switch で行う (OCP closed-enum: registry 不要)。
+
+// ── 列の機微分類 (閉じた集合) ────────────────────────────────────────────────
+
+export type ColumnFlag =
+  | 'oauth-token' // access/refresh/oauth トークンの自前保持
+  | 'password' // password / *_secret / secret_hash 等の資格情報
+  | 'personal-pii' // email / phone / 住所等の個人識別情報
+  | 'display-cache' // display name 等の表示用キャッシュ (allowlist)
+  | 'owner-ref' // owner_user_id / user_id 等 Cernere sub 参照 (allowlist)
+  | 'plain'; // 上記いずれでもない
+
+// ── Violation ───────────────────────────────────────────────────────────────
+
+export type Severity = 'critical' | 'high' | 'medium' | 'low';
+export type Category = 'data-boundary' | 'linkage-contract' | 'security' | 'meta';
+
+/** status='skipped' は入力不足で判定不能であることを **明示** する (無言フォールバック禁止)。 */
+export type ViolationStatus = 'violation' | 'skipped';
+
+export interface Violation {
+  id: string; // 'H-LINK-01'
+  severity: Severity;
+  category: Category;
+  subject: string; // 'aedilis' / 'Cernere.project_oauth_tokens'
+  message: string;
+  evidence: string[]; // ['Aedilis/server/corpus.ts:240', 'Cernere/migrations/']
+  expected: string;
+  actual: string;
+  status: ViolationStatus;
+}
+
+// ── Cernere レジストリ / 境界モデル ──────────────────────────────────────────
+
+export type RegistrySource = 'migrations' | 'migrations+db-export';
+
+export interface ManagedProject {
+  key: string;
+  clientIdPresent: boolean;
+  isActive: boolean;
+  schemaDefinitionPresent: boolean;
+  source: 'migrations' | 'db-export';
+  evidence: string;
+}
+
+export interface OidcClient {
+  clientId: string;
+  redirectUris: string[];
+  scopes: string[];
+  isActive: boolean;
+  source: 'static' | 'db-export';
+}
+
+export interface RelayPair {
+  from: string;
+  to: string;
+  bidirectional: boolean;
+  isActive: boolean;
+  source: 'migrations' | 'db-export';
+  evidence: string;
+}
+
+export interface ColumnRef {
+  table: string;
+  column: string;
+  flag: ColumnFlag;
+}
+
+export interface CernereModel {
+  managedProjects: ManagedProject[];
+  oidcClients: OidcClient[];
+  /** 'runtime-unknown' = migrations は CREATE のみで seed 無し → 静的に列挙不能。 */
+  oidcClientsSource: 'static' | 'runtime-unknown' | 'db-export';
+  relayPairs: RelayPair[];
+  boundary: { holds: string[]; notHolds: string[]; docFiles: string[] };
+  personalDataColumns: ColumnRef[];
+  registrySource: RegistrySource;
+}
+
+// ── サービス manifest / schema モデル ────────────────────────────────────────
+
+export interface ManifestDataEndpoint {
+  id: string;
+  path: string;
+  scope: 'local' | 'multi';
+}
+
+export interface ManifestPanel {
+  id: string;
+  kind: string; // 'declarative' | 'script' | ...
+}
+
+export interface Manifest {
+  service: string;
+  displayName?: string;
+  version?: string;
+  corpusApi: number;
+  auth: string;
+  cernereProjectKey?: string;
+  data: ManifestDataEndpoint[];
+  panels: ManifestPanel[];
+}
+
+export type ManifestSource = 'literal-eval' | 'ast' | 'static-file' | 'missing';
+
+export interface ServiceTable {
+  name: string;
+  columns: { name: string; flags: ColumnFlag[] }[];
+}
+
+export interface ServiceNode {
+  repo: string;
+  projectCode?: string;
+  manifestFile?: string;
+  manifest: Manifest | null;
+  manifestSource: ManifestSource;
+  localSchema: { tables: ServiceTable[]; schemaFile?: string };
+}
+
+// ── Hub 連結モデル ───────────────────────────────────────────────────────────
+
+export interface DiscoveryConfig {
+  mode: 'local' | 'server';
+  localPorts: number[];
+  serverServices: string[];
+  remoteUrl: string | null;
+}
+
+export interface HubPlugin {
+  id: string;
+  connectsTo: string;
+  baseUrlEnv: string;
+  envSet: boolean;
+  file: string;
+}
+
+export interface HubModel {
+  corpus: {
+    tokenModeDefault: string;
+    /** Corpus normalize が実装するマニフェスト規約バージョン。 */
+    supportedCorpusApi: number;
+    discovery: DiscoveryConfig;
+    sources: { tokenMode: string; discovery: string; corpusApi: string };
+  };
+  vantanhub: { plugins: HubPlugin[] };
+}
+
+// ── ContractGraph ────────────────────────────────────────────────────────────
+
+export interface ContractGraph {
+  root: string;
+  date: string; // YYYY-MM-DD
+  reposScanned: string[];
+  cernere: CernereModel;
+  services: ServiceNode[];
+  hub: HubModel;
+}
