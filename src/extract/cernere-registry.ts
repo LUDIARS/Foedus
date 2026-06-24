@@ -13,12 +13,13 @@ import type {
   RelayPair,
   RegistrySource,
 } from '../model/contract-graph.ts';
-import { listFiles, readText, rel, lineAt } from './fs-util.ts';
+import { listFiles, listSubdirs, isFile, readText, rel, lineAt } from './fs-util.ts';
 
 export interface RegistryExtract {
   managedProjects: ManagedProject[];
   oidcClients: OidcClient[];
   oidcClientsSource: 'static' | 'runtime-unknown' | 'db-export';
+  serviceTemplates: string[];
   relayPairs: RelayPair[];
   registrySource: RegistrySource;
 }
@@ -51,6 +52,14 @@ export function extractCernereRegistry(
 ): RegistryExtract {
   const migDir = join(root, 'Cernere', 'migrations');
   const sqlFiles = listFiles(migDir, '.sql');
+
+  // server/service/<key>/schema.json を持つサービス = Cernere オンボード済みの
+  // 弱いシグナル (managed_projects 行そのものではない)。 _template は除外。
+  const serviceDir = join(root, 'Cernere', 'server', 'service');
+  const serviceTemplates = listSubdirs(serviceDir)
+    .filter((d) => d !== '_template')
+    .filter((d) => isFile(join(serviceDir, d, 'schema.json')))
+    .sort();
 
   const managed = new Map<string, ManagedProject>();
   const relays: RelayPair[] = [];
@@ -162,6 +171,7 @@ export function extractCernereRegistry(
     managedProjects,
     oidcClients,
     oidcClientsSource,
+    serviceTemplates,
     relayPairs: relays,
     registrySource,
   };

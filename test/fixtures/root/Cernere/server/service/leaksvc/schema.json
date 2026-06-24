@@ -1,0 +1,4 @@
+{
+  "comment": "fixture: server/service/<key>/ テンプレート = オンボード済みの弱いシグナル。 seed 不在でも runtime/admin 登録の蓋然性を示す (H-LINK-01 low 段の抽出検証用)。",
+  "fields": []
+}

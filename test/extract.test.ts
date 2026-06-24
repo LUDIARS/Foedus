@@ -35,6 +35,12 @@ describe('cernere-registry', () => {
     expect(r.managedProjects.map((p) => p.key)).toContain('aedilis');
     expect(r.oidcClientsSource).toBe('db-export');
   });
+
+  it('server/service/<key>/ テンプレートをオンボード信号として抽出 (_template 除外)', () => {
+    const r = extractCernereRegistry(ROOT);
+    expect(r.serviceTemplates).toContain('leaksvc');
+    expect(r.serviceTemplates).not.toContain('_template');
+  });
 });
 
 describe('cernere-boundary', () => {

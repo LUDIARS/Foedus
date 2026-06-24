@@ -20,18 +20,50 @@ function serviceManifestNames(g: ContractGraph): Set<string> {
   return s;
 }
 
-/** H-LINK-01 projectKey 実在性: manifest.cernereProjectKey ∉ managedProjects。 */
+/**
+ * H-LINK-01 projectKey 実在性: manifest.cernereProjectKey ∉ managedProjects。
+ *
+ * 3 段階で判定する (H-LINK-01 追跡で判明した精緻化):
+ *  - seed/db-export に存在 → 指摘なし。
+ *  - 静的 seed に無いが `server/service/<key>/` テンプレートあり → **low**。
+ *    Cernere オンボード済みで managed_projects 行は runtime/admin 登録の蓋然性が高い。
+ *    確定には `--cernere-db-export` が要る (値を捏造しない)。
+ *  - seed にも service テンプレートにも痕跡なし → **high** (真のギャップ)。
+ */
 export function hLink01(g: ContractGraph): Violation[] {
   const keys = managedKeySet(g);
+  const templates = new Set(g.cernere.serviceTemplates);
+  const isStatic = g.cernere.registrySource === 'migrations';
   const out: Violation[] = [];
   for (const svc of g.services) {
     const key = svc.manifest?.cernereProjectKey;
     if (!key) continue;
     if (keys.has(key)) continue;
-    const runtimeNote =
-      g.cernere.registrySource === 'migrations'
-        ? ' (--cernere-db-export 未指定のため runtime 登録分は不可視。 migration シードには不在)'
-        : ' (migration シード + db-export いずれにも不在)';
+
+    // テンプレートはオンボード済みの弱いシグナル。 静的レジストリ (migrations のみ)
+    // のときだけ「runtime 登録の蓋然性」として severity を下げる。 db-export 併合済みで
+    // なお不在なら runtime 行も見えているはずなので high のまま。
+    if (isStatic && templates.has(key)) {
+      out.push({
+        id: 'H-LINK-01',
+        severity: 'low',
+        category: 'linkage-contract',
+        subject: svc.manifest?.service ?? svc.repo,
+        message: `manifest.cernereProjectKey='${key}' は migration シードに無いが Cernere/server/service/${key}/ テンプレートが存在する (オンボード済み)。 managed_projects 行は runtime/admin 登録の蓋然性が高い。 確定には --cernere-db-export が必要。`,
+        evidence: [
+          svc.manifestFile ?? `${svc.repo}/server/corpus.ts`,
+          `Cernere/server/service/${key}/schema.json`,
+        ],
+        expected: `managed_projects に key='${key}' が登録されている (seed もしくは runtime)`,
+        actual: `seed 済みキー: [${[...keys].sort().join(', ')}] に '${key}' 無し / service テンプレートは有り`,
+        status: 'violation',
+      });
+      continue;
+    }
+
+    const runtimeNote = isStatic
+      ? ' (--cernere-db-export 未指定のため runtime 登録分は不可視。 migration シードにも service テンプレートにも不在)'
+      : ' (migration シード + db-export いずれにも不在)';
     out.push({
       id: 'H-LINK-01',
       severity: 'high',

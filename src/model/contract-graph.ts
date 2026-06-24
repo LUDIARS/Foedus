@@ -75,6 +75,12 @@ export interface CernereModel {
   oidcClients: OidcClient[];
   /** 'runtime-unknown' = migrations は CREATE のみで seed 無し → 静的に列挙不能。 */
   oidcClientsSource: 'static' | 'runtime-unknown' | 'db-export';
+  /**
+   * `Cernere/server/service/<key>/` に schema.json テンプレートを持つサービスキー
+   * (_template 除く)。 managed_projects 行そのものではなく **オンボード済みの弱い
+   * シグナル**。 seed 不在でもテンプレートがあれば runtime/admin 登録の蓋然性が高い。
+   */
+  serviceTemplates: string[];
   relayPairs: RelayPair[];
   boundary: { holds: string[]; notHolds: string[]; docFiles: string[] };
   personalDataColumns: ColumnRef[];

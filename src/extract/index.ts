@@ -74,6 +74,7 @@ export async function buildContractGraph(
       managedProjects: registry.managedProjects,
       oidcClients: registry.oidcClients,
       oidcClientsSource: registry.oidcClientsSource,
+      serviceTemplates: registry.serviceTemplates,
       relayPairs: registry.relayPairs,
       boundary: {
         holds: boundary.holds,
