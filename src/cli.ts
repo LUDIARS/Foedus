@@ -4,6 +4,7 @@
 //                            [--json|--md] [--out <dir>] [--ci]
 //   foedus roadmap-contract  --root <dir> [--cernere-db-export f.json] [--repos a,b]
 //                            [--out <dir>] [--dry]
+//   foedus serve             --root <dir> [--port 17340] [--host 127.0.0.1] [--cernere-db-export f]
 //
 // 既定は exit 0 (レビュー用途優先)。 --ci 指定時のみ critical/high 違反で exit 1。
 // 前提 (root の存在等) は入口で検証し、 満たさなければ即エラー (fail-fast)。
@@ -16,6 +17,11 @@ import { evaluateAll } from './rules/registry.ts';
 import { buildReport } from './report/violations.ts';
 import { renderContractMd } from './report/render-md.ts';
 import { buildRoadmapContract } from './report/roadmap-slice.ts';
+import { serve } from './serve/server.ts';
+
+/** serve の既定ポート。 LUDIARS PORT-MAP の loopback only レンジ (17000-17999)。 */
+const DEFAULT_SERVE_PORT = 17340;
+const DEFAULT_SERVE_HOST = '127.0.0.1';
 
 interface CliArgs {
   command: string;
@@ -27,6 +33,8 @@ interface CliArgs {
   out?: string;
   ci: boolean;
   dry: boolean;
+  port?: number;
+  host?: string;
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -45,6 +53,17 @@ function parseArgs(argv: string[]): CliArgs {
         break;
       case '--out':
         args.out = argv[++i];
+        break;
+      case '--port': {
+        const p = Number(argv[++i]);
+        if (!Number.isInteger(p) || p < 1 || p > 65535) {
+          throw new Error(`--port は 1-65535 の整数: ${argv[i]}`);
+        }
+        args.port = p;
+        break;
+      }
+      case '--host':
+        args.host = argv[++i];
         break;
       case '--json':
         args.json = true;
@@ -90,6 +109,12 @@ roadmap-contract options:
   --repos a,b,c              対象サービスを絞る
   --out <dir>                集約 index (roadmap-contract.json) も書き出す
   --dry                      ファイルを書かずに振り分け結果だけ表示する
+
+serve options (loopback 読み取り専用ビューア):
+  --root <dir>               走査ルート [必須]
+  --port <n>                 待受ポート (既定 ${DEFAULT_SERVE_PORT})
+  --host <addr>              bind アドレス (既定 ${DEFAULT_SERVE_HOST} = 外部公開なし)
+  --cernere-db-export <f>    runtime 登録分を JSON 補完
 `;
 
 /** --root / --cernere-db-export の fail-fast 入口検証。 解決済み root を返す。 */
@@ -119,6 +144,8 @@ async function main(): Promise<number> {
       return runContractCheck(args);
     case 'roadmap-contract':
       return runRoadmapContract(args);
+    case 'serve':
+      return runServe(args);
     default:
       process.stderr.write(`未知のコマンド: ${args.command}\n\n${USAGE}`);
       return 2;
@@ -238,6 +265,21 @@ async function runRoadmapContract(args: CliArgs): Promise<number> {
     process.stderr.write(`[foedus] index → ${join(args.out, 'roadmap-contract.json')}\n`);
   }
 
+  return 0;
+}
+
+/**
+ * serve: 連結契約レポートの loopback 読み取り専用 Web ビューア。 被レビュー対象の
+ * dev server ではなく、 生成済み静的解析結果の閲覧専用 (毎リクエスト再解析で最新)。
+ */
+async function runServe(args: CliArgs): Promise<number> {
+  const root = validateRoot(args);
+  await serve({
+    root,
+    port: args.port ?? DEFAULT_SERVE_PORT,
+    host: args.host ?? DEFAULT_SERVE_HOST,
+    cernereDbExport: args.cernereDbExport,
+  });
   return 0;
 }
 
