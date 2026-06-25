@@ -1,0 +1,7 @@
+{
+  "line": { "id": "data", "code": "DATA", "title": "Data Line", "visibility": "非公開" },
+  "members": [
+    { "repo": "Leak", "role": "自前保持サービス", "importance": 2, "status": "設計", "completion": 30, "lines": [] },
+    { "repo": "Cernere", "role": "単一情報源", "importance": 3, "status": "連携", "completion": 70, "lines": [] }
+  ]
+}

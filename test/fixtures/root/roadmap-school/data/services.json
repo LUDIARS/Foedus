@@ -1,0 +1,10 @@
+{
+  "line": { "id": "school", "code": "SCHOOL", "title": "School Line", "visibility": "非公開" },
+  "members": [
+    { "repo": "Aedilis", "role": "予約", "importance": 3, "status": "連携", "completion": 60, "lines": [] },
+    { "repo": "VantanHub", "role": "学校 hub", "importance": 3, "status": "稼働", "completion": 70, "lines": [] },
+    { "repo": "Cernere", "role": "単一情報源", "importance": 2, "status": "連携", "completion": 70, "lines": [] },
+    { "repo": "Corpus", "role": "汎用 hub", "importance": 2, "status": "稼働", "completion": 65, "lines": [] },
+    { "repo": "Hora", "role": "デスクトップUI", "importance": 1, "status": "設計", "completion": 40, "lines": [] }
+  ]
+}
