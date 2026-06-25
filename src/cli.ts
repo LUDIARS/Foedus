@@ -1,7 +1,9 @@
-// foedus CLI — 設計書 §2.6。
+// foedus CLI — 設計書 §2.6 / §2.7。
 //
-//   foedus contract-check --root <dir> [--repos a,b] [--cernere-db-export f.json]
-//                         [--json|--md] [--out <dir>] [--ci]
+//   foedus contract-check    --root <dir> [--repos a,b] [--cernere-db-export f.json]
+//                            [--json|--md] [--out <dir>] [--ci]
+//   foedus roadmap-contract  --root <dir> [--cernere-db-export f.json] [--repos a,b]
+//                            [--out <dir>] [--dry]
 //
 // 既定は exit 0 (レビュー用途優先)。 --ci 指定時のみ critical/high 違反で exit 1。
 // 前提 (root の存在等) は入口で検証し、 満たさなければ即エラー (fail-fast)。
@@ -9,9 +11,11 @@
 import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { buildContractGraph } from './extract/index.ts';
+import { extractRoadmapLines } from './extract/roadmap.ts';
 import { evaluateAll } from './rules/registry.ts';
 import { buildReport } from './report/violations.ts';
 import { renderContractMd } from './report/render-md.ts';
+import { buildRoadmapContract } from './report/roadmap-slice.ts';
 
 interface CliArgs {
   command: string;
@@ -22,10 +26,11 @@ interface CliArgs {
   md: boolean;
   out?: string;
   ci: boolean;
+  dry: boolean;
 }
 
 function parseArgs(argv: string[]): CliArgs {
-  const args: CliArgs = { command: argv[0] ?? '', json: false, md: false, ci: false };
+  const args: CliArgs = { command: argv[0] ?? '', json: false, md: false, ci: false, dry: false };
   for (let i = 1; i < argv.length; i++) {
     const a = argv[i];
     switch (a) {
@@ -50,6 +55,9 @@ function parseArgs(argv: string[]): CliArgs {
       case '--ci':
         args.ci = true;
         break;
+      case '--dry':
+        args.dry = true;
+        break;
       case '-h':
       case '--help':
         args.command = 'help';
@@ -64,9 +72,10 @@ function parseArgs(argv: string[]): CliArgs {
 const USAGE = `foedus — Cernere↔Hub 連結契約チェッカー (層B)
 
 使い方:
-  foedus contract-check --root <Ars dir> [options]
+  foedus contract-check   --root <Ars dir> [options]
+  foedus roadmap-contract --root <Ars dir> [options]   # 連結契約を事業ライン別に投影
 
-options:
+contract-check options:
   --root <dir>               走査ルート (例 E:/Document/Ars) [必須]
   --repos a,b,c              対象サービスを絞る (既定: corpus.ts 保有リポ全部)
   --cernere-db-export <f>    runtime 登録分 (managed_projects/oidc_clients) を JSON 補完
@@ -74,7 +83,29 @@ options:
   --md                       CONTRACT.md を出力 (--out 無しなら stdout)
   --out <dir>                出力先ディレクトリ (violations.json + CONTRACT.md)
   --ci                       critical/high 違反があれば exit 1 (既定は exit 0)
+
+roadmap-contract options:
+  --root <dir>               走査ルート (roadmap-* を含む) [必須]
+  --cernere-db-export <f>    runtime 登録分を JSON 補完
+  --repos a,b,c              対象サービスを絞る
+  --out <dir>                集約 index (roadmap-contract.json) も書き出す
+  --dry                      ファイルを書かずに振り分け結果だけ表示する
 `;
+
+/** --root / --cernere-db-export の fail-fast 入口検証。 解決済み root を返す。 */
+function validateRoot(args: CliArgs): string {
+  if (!args.root) {
+    throw new Error('--root は必須です。');
+  }
+  const root = resolve(args.root);
+  if (!existsSync(root) || !statSync(root).isDirectory()) {
+    throw new Error(`--root が存在しないかディレクトリではありません: ${root}`);
+  }
+  if (args.cernereDbExport && !existsSync(args.cernereDbExport)) {
+    throw new Error(`--cernere-db-export が見つかりません: ${args.cernereDbExport}`);
+  }
+  return root;
+}
 
 async function main(): Promise<number> {
   const args = parseArgs(process.argv.slice(2));
@@ -83,25 +114,19 @@ async function main(): Promise<number> {
     process.stdout.write(USAGE);
     return 0;
   }
-  if (args.command !== 'contract-check') {
-    process.stderr.write(`未知のコマンド: ${args.command}\n\n${USAGE}`);
-    return 2;
+  switch (args.command) {
+    case 'contract-check':
+      return runContractCheck(args);
+    case 'roadmap-contract':
+      return runRoadmapContract(args);
+    default:
+      process.stderr.write(`未知のコマンド: ${args.command}\n\n${USAGE}`);
+      return 2;
   }
+}
 
-  // ── fail-fast 入口検証 ─────────────────────────────────────────────────────
-  if (!args.root) {
-    process.stderr.write('--root は必須です。\n');
-    return 2;
-  }
-  const root = resolve(args.root);
-  if (!existsSync(root) || !statSync(root).isDirectory()) {
-    process.stderr.write(`--root が存在しないかディレクトリではありません: ${root}\n`);
-    return 2;
-  }
-  if (args.cernereDbExport && !existsSync(args.cernereDbExport)) {
-    process.stderr.write(`--cernere-db-export が見つかりません: ${args.cernereDbExport}\n`);
-    return 2;
-  }
+async function runContractCheck(args: CliArgs): Promise<number> {
+  const root = validateRoot(args);
 
   // ── 抽出 → 評価 → 集計 ─────────────────────────────────────────────────────
   const graph = await buildContractGraph({
@@ -137,6 +162,82 @@ async function main(): Promise<number> {
   if (args.ci && (report.bySeverity.critical > 0 || report.bySeverity.high > 0)) {
     return 1;
   }
+  return 0;
+}
+
+/**
+ * roadmap-contract: 連結契約を事業ライン別に投影し、 各 roadmap-<line>/data/contract.json
+ * を書き出す。 契約事実は contract-check と同一パイプライン (graph→evaluateAll) を共有し、
+ * ここでは振り分けるだけ (二重管理しない)。
+ */
+async function runRoadmapContract(args: CliArgs): Promise<number> {
+  const root = validateRoot(args);
+
+  const graph = await buildContractGraph({
+    root,
+    repos: args.repos,
+    cernereDbExport: args.cernereDbExport,
+  });
+  const all = evaluateAll(graph);
+
+  const scan = extractRoadmapLines(root);
+  if (scan.lines.length === 0) {
+    process.stderr.write(`[foedus] roadmap-* が ${root} に見つかりません (data/services.json 必須)。\n`);
+    for (const e of scan.errors) process.stderr.write(`  - ${e.dir}: ${e.message}\n`);
+    return 2;
+  }
+
+  const { slices, unassigned } = buildRoadmapContract(graph, all, scan.lines);
+
+  for (const { dir, slice } of slices) {
+    const dataDir = join(root, dir, 'data');
+    const target = join(dataDir, 'contract.json');
+    const body = JSON.stringify(slice, null, 2);
+    if (!args.dry) {
+      mkdirSync(dataDir, { recursive: true });
+      writeFileSync(target, body + '\n', 'utf8');
+    }
+    const s = slice.summary;
+    process.stderr.write(
+      `[foedus] ${slice.line.padEnd(16)} grade=${slice.grade} ` +
+        `members=${slice.members.length} violations=${s.violations} skipped=${s.skipped} ` +
+        `${args.dry ? '(dry)' : '→ ' + dir + '/data/contract.json'}\n`,
+    );
+  }
+  for (const e of scan.errors) {
+    process.stderr.write(`[foedus] skip ${e.dir}: ${e.message}\n`);
+  }
+
+  // どのラインにも帰属しなかった finding を明示する (無言で落とさない)。
+  if (unassigned.length > 0) {
+    process.stderr.write(
+      `[foedus] どのラインにも未帰属の finding ${unassigned.length} 件 (主体サービスが roadmap-* の member 不在):\n`,
+    );
+    for (const u of unassigned) {
+      process.stderr.write(`  - [${u.severity}/${u.status}] ${u.id} ${u.subject} (primary=${u.primary ?? 'なし'})\n`);
+    }
+  }
+
+  // 集約 index は --out 指定時のみ (HTTP 非経由 consumer 用の可搬スナップショット)。
+  if (args.out) {
+    mkdirSync(args.out, { recursive: true });
+    const index = {
+      generated: graph.date,
+      scope: 'Cernere+Hub' as const,
+      source: 'Foedus roadmap-contract',
+      lines: slices.map(({ dir, code, slice }) => ({
+        dir,
+        line: code,
+        grade: slice.grade,
+        summary: slice.summary,
+      })),
+      unassigned,
+      errors: scan.errors,
+    };
+    writeFileSync(join(args.out, 'roadmap-contract.json'), JSON.stringify(index, null, 2) + '\n', 'utf8');
+    process.stderr.write(`[foedus] index → ${join(args.out, 'roadmap-contract.json')}\n`);
+  }
+
   return 0;
 }
 
