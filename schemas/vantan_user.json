@@ -1,0 +1,36 @@
+{
+  "project": {
+    "key": "vantan_user",
+    "name": "Vantan User Profile",
+    "description": "学科登録・学年・氏名・希望職種などの学生プロフィール共通スキーマ"
+  },
+
+  "user_data": {
+    "columns": {
+      "department_name": {
+        "type": "text",
+        "module": "profile",
+        "nullable": false,
+        "description": "所属学科"
+      },
+      "grade": {
+        "type": "integer",
+        "module": "profile",
+        "nullable": false,
+        "description": "学年"
+      },
+      "name": {
+        "type": "text",
+        "module": "profile",
+        "nullable": false,
+        "description": "氏名"
+      },
+      "desired_job": {
+        "type": "text",
+        "module": "profile",
+        "nullable": true,
+        "description": "希望職種"
+      }
+    }
+  }
+}

@@ -11,6 +11,7 @@ import { extractCernereBoundary } from './cernere-boundary.ts';
 import { extractServiceManifest } from './service-manifest.ts';
 import { extractServiceSchema } from './service-schema.ts';
 import { extractHubConfig } from './hub-config.ts';
+import { extractExternalProjectSchemas } from './external-project-schema.ts';
 import { isFile, listSubdirs, rel } from './fs-util.ts';
 
 export interface BuildOptions {
@@ -39,6 +40,7 @@ export async function buildContractGraph(
   const registry = extractCernereRegistry(root, opts.cernereDbExport);
   const boundary = extractCernereBoundary(root);
   const hub = extractHubConfig(root);
+  const externalProjectSchemas = extractExternalProjectSchemas(root);
 
   const serviceRepos = discoverServiceRepos(root, opts.repos);
   const services: ServiceNode[] = [];
@@ -83,6 +85,7 @@ export async function buildContractGraph(
       },
       personalDataColumns: boundary.personalDataColumns,
       registrySource: registry.registrySource,
+      externalProjectSchemas,
     },
     services,
     hub,

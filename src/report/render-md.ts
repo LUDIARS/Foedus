@@ -3,7 +3,7 @@
 // 人間向けの表。 severity 別に違反を並べ、 skipped (判定不能) を **別節** で
 // 明示する (無言フォールバック禁止の可観測化)。
 
-import type { Severity, Violation } from '../model/contract-graph.ts';
+import type { ExternalProjectSchema, Severity, Violation } from '../model/contract-graph.ts';
 import type { ContractReport } from './violations.ts';
 
 const SEVERITY_ORDER: Severity[] = ['critical', 'high', 'medium', 'low'];
@@ -70,7 +70,29 @@ export function renderContractMd(r: ContractReport): string {
     lines.push('');
   }
 
+  // ── 外部管理スキーマ (Cernere projectDefinitionSchema 経由) ────────────────
+  lines.push(...renderExternalSchemaSections(r.externalProjectSchemas));
+
   return lines.join('\n');
+}
+
+/** `schemas/*.json` 由来の外部管理 Cernere プロジェクトスキーマをキー別に列挙する。 */
+function renderExternalSchemaSections(schemas: ExternalProjectSchema[]): string[] {
+  const lines: string[] = [];
+  if (schemas.length === 0) return lines;
+  for (const schema of schemas) {
+    lines.push(`## 外部管理スキーマ (external:${schema.key})`);
+    lines.push('');
+    lines.push(`> ソース: \`${schema.file}\` (Cernere \`projectDefinitionSchema\` 準拠)`);
+    lines.push('');
+    lines.push('| column | flag |');
+    lines.push('|---|---|');
+    for (const col of schema.columns) {
+      lines.push(`| ${esc(col.column)} | ${esc(col.flag)} |`);
+    }
+    lines.push('');
+  }
+  return lines;
 }
 
 function rowFor(v: Violation): string {

@@ -156,6 +156,37 @@ export function cData07(g: ContractGraph): Violation[] {
   ];
 }
 
+/**
+ * C-DATA-08 外部管理スキーマの個人データ棚卸し: `graph.cernere.externalProjectSchemas`
+ * (Foedus `schemas/*.json` 経由で Cernere にオーサリングされた per-user プロフィール等)
+ * の機微列を一覧化する。 この機構自体が Cernere 単一情報源化の**正規経路**であり
+ * C-DATA-01/02 (自前保持の是正) とは逆に「意図通り Cernere に置かれている」ことの
+ * 確認が目的。 そのため severity は低め (low) の review-focused な violation とし、
+ * critical/high 側の是正対象とは明確に区別する (C-DATA-07 と同様の informational 事実提示)。
+ */
+export function cData08(g: ContractGraph): Violation[] {
+  const out: Violation[] = [];
+  for (const schema of g.cernere.externalProjectSchemas) {
+    for (const col of schema.columns) {
+      if (!['personal-pii', 'oauth-token', 'password'].includes(col.flag)) continue;
+      const category: Violation['category'] =
+        col.flag === 'personal-pii' ? 'data-boundary' : 'security';
+      out.push({
+        id: 'C-DATA-08',
+        severity: 'low',
+        category,
+        subject: `external:${schema.key}.${col.column}`,
+        message: `外部管理スキーマ ${schema.key} (${schema.file}) の列 ${col.column} は機微分類 ${col.flag}。 Cernere 汎用プロジェクトスキーマ機構経由でホストされる個人データとして棚卸しのため記録 (是正指示ではなくレビュー観点)。`,
+        evidence: [schema.file],
+        expected: '機微列は Cernere project-schema 経由で単一情報源化 (本件は想定通りの配置)',
+        actual: `${schema.key}.${col.column} が ${col.flag} として外部管理スキーマに存在`,
+        status: 'violation',
+      });
+    }
+  }
+  return out;
+}
+
 function skipped(
   id: string,
   severity: Violation['severity'],
