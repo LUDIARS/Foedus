@@ -8,7 +8,7 @@
 // その直下の兄弟リポ名 — 絶対パスをハードコードしない)。
 
 import { join } from 'node:path';
-import type { ColumnFlag, ExternalProjectSchema } from '../model/contract-graph.ts';
+import type { ColumnFlag, ExternalDataShare, ExternalProjectSchema } from '../model/contract-graph.ts';
 import { classifyColumn } from './column-classifier.ts';
 import { listFiles, readText, rel } from './fs-util.ts';
 
@@ -19,8 +19,16 @@ interface RawColumnDefinition {
   description?: unknown;
 }
 
+interface RawDataShare {
+  project_key?: unknown;
+  modules?: unknown;
+  access?: unknown;
+  description?: unknown;
+}
+
 interface RawProjectSchema {
   project?: { key?: unknown; name?: unknown; description?: unknown };
+  data_sharing?: unknown;
   user_data?: { columns?: Record<string, RawColumnDefinition> };
 }
 
@@ -40,6 +48,7 @@ function classifyExternalColumn(rawName: string): ColumnFlag {
 interface ParsedProjectSchema {
   key: string;
   columns: Record<string, RawColumnDefinition>;
+  dataSharing: ExternalDataShare[];
 }
 
 /**
@@ -68,7 +77,42 @@ function parseProjectSchema(file: string): ParsedProjectSchema {
     throw new Error(`外部管理スキーマに user_data.columns がありません: ${file}`);
   }
 
-  return { key, columns };
+  const dataSharing = parseDataSharing(parsed.data_sharing, file);
+
+  return { key, columns, dataSharing };
+}
+
+/**
+ * project.data_sharing (Cernere `dataShareDefinitionSchema` 準拠) を解決する。
+ * 未指定は空配列 (共有無しは正常系)。 project_key を欠く要素は
+ * オーサリング不備として fail-fast する (無言フォールバック禁止)。
+ */
+function parseDataSharing(raw: unknown, file: string): ExternalDataShare[] {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) {
+    throw new Error(`外部管理スキーマの data_sharing は配列である必要があります: ${file}`);
+  }
+  return raw.map((entry, i) => {
+    const e = entry as RawDataShare;
+    if (typeof e?.project_key !== 'string' || e.project_key.length === 0) {
+      throw new Error(`外部管理スキーマの data_sharing[${i}] に project_key がありません: ${file}`);
+    }
+    if (e.modules !== undefined && !(Array.isArray(e.modules) && e.modules.every((m) => typeof m === 'string'))) {
+      throw new Error(`外部管理スキーマの data_sharing[${i}].modules は string[] である必要があります: ${file}`);
+    }
+    if (e.access !== undefined && e.access !== 'read' && e.access !== 'readwrite') {
+      throw new Error(`外部管理スキーマの data_sharing[${i}].access は 'read'|'readwrite' である必要があります: ${file}`);
+    }
+    if (e.description !== undefined && typeof e.description !== 'string') {
+      throw new Error(`外部管理スキーマの data_sharing[${i}].description は string である必要があります: ${file}`);
+    }
+    return {
+      projectKey: e.project_key,
+      modules: e.modules as string[] | undefined,
+      access: (e.access as 'read' | 'readwrite' | undefined) ?? 'read',
+      description: e.description,
+    };
+  });
 }
 
 /** `<root>/Foedus/schemas/*.json` を読み、 各ファイルを ExternalProjectSchema へ変換する。 */
@@ -85,6 +129,7 @@ export function extractExternalProjectSchemas(root: string): ExternalProjectSche
         column,
         flag: classifyExternalColumn(column),
       })),
+      dataSharing: parsed.dataSharing,
     };
   });
 }

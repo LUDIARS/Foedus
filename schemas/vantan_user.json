@@ -5,6 +5,15 @@
     "description": "学科登録・学年・氏名・希望職種などの学生プロフィール共通スキーマ"
   },
 
+  "data_sharing": [
+    {
+      "project_key": "aedilis",
+      "modules": ["profile"],
+      "access": "read",
+      "description": "施設予約・出席記録のため、学科・学年を読み取り専用で共有"
+    }
+  ],
+
   "user_data": {
     "columns": {
       "department_name": {
