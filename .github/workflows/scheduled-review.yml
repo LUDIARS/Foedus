@@ -21,6 +21,26 @@
 #   (org repo:read 相当の Fine-grained PAT) を設定すると VantanHub も対象に含める。
 #   未設定の場合は **無言で落とさず** ::warning:: を出して VantanHub をスキップし、
 #   残りの public リポのみで契約チェックを実行する (RULE_CODE §7.1: 無言フォールバック禁止)。
+#
+# ── 既知のギャップ: 外部管理スキーマ (Cernere schema-export) のライブ取得 ──────────
+#   2026-07 の変更で、Foedus は外部管理プロジェクトスキーマ (旧 schemas/*.json、例:
+#   vantan_user) を自リポに恒久コミットしなくなった。代わりに contract-check 実行の
+#   たびに Cernere の `GET /api/admin/projects/schema-export` へライブ HTTP 接続する
+#   (CERNERE_BASE_URL + FOEDUS_CERNERE_EXPORT_TOKEN が必須。 src/extract/cernere-schema-client.ts)。
+#
+#   このワークフローは Cernere を **ソースとして checkout するだけ** で、実行中の
+#   Cernere サーバーには到達できない (reachable staging/dev Cernere の仕組みは
+#   このリポ/org にまだ無い)。そのため secrets.FOEDUS_CERNERE_EXPORT_TOKEN /
+#   vars.CERNERE_BASE_URL が未設定の間は、下記ステップが自動的に
+#   `--skip-external-schema` を付与し **C-DATA-08 (外部管理スキーマの個人データ棚卸し)
+#   を省略した degraded 実行** になる (VantanHub skip と同じ「無言にしない」パターン:
+#   ::warning:: で明示)。
+#
+#   TODO (人間の判断が必要): 到達可能な staging Cernere を用意するか、CI 専用の
+#   Cernere export token を発行し、Secrets に `FOEDUS_CERNERE_EXPORT_TOKEN` を、
+#   repository/organization variables に `CERNERE_BASE_URL` を設定すること。
+#   設定されれば下記ステップは自動的にライブ取得へ切り替わる (ワークフロー側の
+#   追加変更は不要)。
 
 name: Scheduled Contract Review
 
@@ -100,16 +120,32 @@ jobs:
         run: |
           echo "::warning title=VantanHub skipped::LUDIARS_REPO_TOKEN secret 未設定のため private リポ VantanHub を契約チェック対象から除外しました。Hub 連結 (Corpus 側) のみ検査されます。VantanHub も対象に含めるには repo:read 権限の Fine-grained PAT を LUDIARS_REPO_TOKEN として設定してください。"
 
+      # ── 外部管理スキーマ (Cernere schema-export) のライブ取得可否を明示する ────
+      # secrets.FOEDUS_CERNERE_EXPORT_TOKEN が無ければ Cernere へ到達できないので
+      # --skip-external-schema を明示付与する (無言で失敗/無言で空にしない)。
+      - name: Note external-schema skipped (no Cernere export token)
+        if: ${{ secrets.FOEDUS_CERNERE_EXPORT_TOKEN == '' }}
+        run: |
+          echo "::warning title=External schema skipped::FOEDUS_CERNERE_EXPORT_TOKEN secret 未設定 (または到達可能な staging Cernere 未整備) のため、外部管理スキーマ (Cernere schema-export) のライブ取得を --skip-external-schema でスキップします。C-DATA-08 (外部管理スキーマの個人データ棚卸し) はこの実行では 0 件になります。CERNERE_BASE_URL (repository/organization variable) と FOEDUS_CERNERE_EXPORT_TOKEN (secret) を設定すると自動的にライブ取得に切り替わります。"
+
       # ── 横断契約チェック ────────────────────────────────────────────────────
       # --ci: critical/high 違反があれば exit 1 (= ジョブ fail = ゲート)。
       # 出力 (violations.json / CONTRACT.md) は always() で artifact 保存する。
       - name: Run contract-check
         id: check
+        env:
+          CERNERE_BASE_URL: ${{ vars.CERNERE_BASE_URL }}
+          FOEDUS_CERNERE_EXPORT_TOKEN: ${{ secrets.FOEDUS_CERNERE_EXPORT_TOKEN }}
         run: |
+          EXTRA_ARGS=""
+          if [ -z "$FOEDUS_CERNERE_EXPORT_TOKEN" ]; then
+            EXTRA_ARGS="--skip-external-schema"
+          fi
           node foedus/dist/cli.js contract-check \
             --root scan-root \
             --json --md --ci \
-            --out artifacts
+            --out artifacts \
+            $EXTRA_ARGS
 
       - name: Upload contract report
         if: always()

@@ -20,7 +20,7 @@ describe('roadmap-contract slice (fixtures)', () => {
   let unassigned: ReturnType<typeof buildRoadmapContract>['unassigned'];
 
   beforeAll(async () => {
-    graph = await buildContractGraph({ root: ROOT, date: '2026-06-24' });
+    graph = await buildContractGraph({ root: ROOT, date: '2026-06-24', skipExternalSchema: true });
     all = evaluateAll(graph);
     const lines = extractRoadmapLines(ROOT).lines;
     const res = buildRoadmapContract(graph, all, lines);

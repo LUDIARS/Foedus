@@ -19,7 +19,7 @@ describe('contract pipeline (fixtures)', () => {
   let skipped: Violation[];
 
   beforeAll(async () => {
-    graph = await buildContractGraph({ root: ROOT, date: '2026-06-24' });
+    graph = await buildContractGraph({ root: ROOT, date: '2026-06-24', skipExternalSchema: true });
     all = evaluateAll(graph);
     active = all.filter((v) => v.status === 'violation');
     skipped = all.filter((v) => v.status === 'skipped');
@@ -87,7 +87,7 @@ describe('contract pipeline (fixtures)', () => {
 
   it('--cernere-db-export で aedilis 補完すると H-LINK-01 が解消', async () => {
     const exp = fileURLToPath(new URL('./fixtures/db-export.json', import.meta.url));
-    const g2 = await buildContractGraph({ root: ROOT, date: '2026-06-24', cernereDbExport: exp });
+    const g2 = await buildContractGraph({ root: ROOT, date: '2026-06-24', cernereDbExport: exp, skipExternalSchema: true });
     const a2 = evaluateAll(g2).filter((v) => v.status === 'violation');
     expect(bySubject(a2, 'H-LINK-01')).toEqual([]);
   });

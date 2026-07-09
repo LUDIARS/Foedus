@@ -73,8 +73,10 @@ export interface ColumnRef {
 /**
  * Cernere 汎用プロジェクトスキーマ機構 (`projectDefinitionSchema`) に外部登録される
  * `user_data.columns`。 実体は Cernere 側の `project_data_<key>` テーブルであり、
- * per-service ローカル schema (ServiceNode.localSchema) とは別モデル。 Foedus 自身が
- * オーサリングする `schemas/*.json` (例: vantan_user) がこれに該当する。
+ * per-service ローカル schema (ServiceNode.localSchema) とは別モデル。 Foedus はこれを
+ * 自リポに恒久コミットせず、 `GET /api/admin/projects/schema-export` から contract-check
+ * 実行のたびにライブ取得する (cernere-schema-client.ts / external-project-schema.ts)。
+ * スキーマ定義の実体は常に Cernere が単一情報源。
  */
 /**
  * project.data_sharing 由来の共有先。 Cernere `dataShareDefinitionSchema`
@@ -90,7 +92,7 @@ export interface ExternalDataShare {
 
 export interface ExternalProjectSchema {
   key: string;
-  file: string; // root 起点の相対パス (evidence 表示用)
+  file: string; // 由来ソースの表示用ラベル (evidence 表示用) — 現在は 'Cernere schema-export (key=<key>)' 形式
   columns: { column: string; flag: ColumnFlag }[];
   /** data_sharing 未記載を空配列と区別するため optional。 */
   dataSharing?: ExternalDataShare[];
