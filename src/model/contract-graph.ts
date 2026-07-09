@@ -76,10 +76,24 @@ export interface ColumnRef {
  * per-service ローカル schema (ServiceNode.localSchema) とは別モデル。 Foedus 自身が
  * オーサリングする `schemas/*.json` (例: vantan_user) がこれに該当する。
  */
+/**
+ * project.data_sharing 由来の共有先。 Cernere `dataShareDefinitionSchema`
+ * (Cernere/server/src/project/schema.ts) と同形。 access は抽出時点で
+ * デフォルト解決済みの値として保持する (report/render 側で再度デフォルト処理しない)。
+ */
+export interface ExternalDataShare {
+  projectKey: string;
+  modules?: string[];
+  access: 'read' | 'readwrite';
+  description?: string;
+}
+
 export interface ExternalProjectSchema {
   key: string;
   file: string; // root 起点の相対パス (evidence 表示用)
   columns: { column: string; flag: ColumnFlag }[];
+  /** data_sharing 未記載を空配列と区別するため optional。 */
+  dataSharing?: ExternalDataShare[];
 }
 
 export interface CernereModel {

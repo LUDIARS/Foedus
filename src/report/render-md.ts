@@ -91,7 +91,29 @@ function renderExternalSchemaSections(schemas: ExternalProjectSchema[]): string[
       lines.push(`| ${esc(col.column)} | ${esc(col.flag)} |`);
     }
     lines.push('');
+    lines.push(...renderDataSharingTable(schema.dataSharing));
   }
+  return lines;
+}
+
+/**
+ * project.data_sharing (共有先プロジェクト) を可視化する。 機微列を他プロジェクトへ
+ * 共有すること自体が契約チェッカーのレビュー対象なので、 列棚卸し表の直後に置く。
+ * 未指定/空配列なら何も出さない。
+ */
+function renderDataSharingTable(dataSharing: ExternalProjectSchema['dataSharing']): string[] {
+  if (!dataSharing || dataSharing.length === 0) return [];
+  const lines: string[] = [];
+  lines.push('**共有先 (data_sharing):**');
+  lines.push('');
+  lines.push('| project_key | modules | access | description |');
+  lines.push('|---|---|---|---|');
+  for (const share of dataSharing) {
+    lines.push(
+      `| ${esc(share.projectKey)} | ${esc(share.modules?.join(', ') ?? '(全モジュール)')} | ${esc(share.access)} | ${esc(share.description ?? '')} |`,
+    );
+  }
+  lines.push('');
   return lines;
 }
 
