@@ -5,6 +5,7 @@
 
 import type {
   ContractGraph,
+  ExternalProjectSchema,
   Severity,
   Violation,
 } from '../model/contract-graph.ts';
@@ -28,6 +29,8 @@ export interface ContractReport {
   skipped: Violation[]; // status='skipped' のみ
   bySeverity: SeverityCounts;
   counts: { violations: number; skipped: number };
+  /** Foedus `schemas/*.json` からオーサリングされた外部管理 Cernere プロジェクトスキーマ。 */
+  externalProjectSchemas: ExternalProjectSchema[];
 }
 
 export function buildReport(
@@ -48,6 +51,7 @@ export function buildReport(
     skipped,
     bySeverity,
     counts: { violations: violations.length, skipped: skipped.length },
+    externalProjectSchemas: g.cernere.externalProjectSchemas,
   };
 }
 

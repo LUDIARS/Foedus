@@ -1,0 +1,10 @@
+{
+  "project": {
+    "name": "Missing Key"
+  },
+  "user_data": {
+    "columns": {
+      "foo": { "type": "text", "module": "x" }
+    }
+  }
+}

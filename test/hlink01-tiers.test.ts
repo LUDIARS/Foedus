@@ -43,6 +43,7 @@ function graph(opts: {
       boundary: { holds: [], notHolds: [], docFiles: [] },
       personalDataColumns: [],
       registrySource: opts.registrySource ?? 'migrations',
+      externalProjectSchemas: [],
     },
     services: [
       {

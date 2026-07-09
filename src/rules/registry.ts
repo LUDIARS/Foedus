@@ -12,6 +12,7 @@ import {
   cData05,
   cData06,
   cData07,
+  cData08,
 } from './data-rules.ts';
 import {
   hLink01,
@@ -32,6 +33,7 @@ export type RuleId =
   | 'C-DATA-05'
   | 'C-DATA-06'
   | 'C-DATA-07'
+  | 'C-DATA-08'
   | 'H-LINK-01'
   | 'H-LINK-02'
   | 'H-LINK-03'
@@ -49,6 +51,7 @@ export const RULE_IDS: readonly RuleId[] = [
   'C-DATA-05',
   'C-DATA-06',
   'C-DATA-07',
+  'C-DATA-08',
   'H-LINK-01',
   'H-LINK-02',
   'H-LINK-03',
@@ -76,6 +79,8 @@ export function evaluateRule(id: RuleId, g: ContractGraph): Violation[] {
       return cData06(g);
     case 'C-DATA-07':
       return cData07(g);
+    case 'C-DATA-08':
+      return cData08(g);
     case 'H-LINK-01':
       return hLink01(g);
     case 'H-LINK-02':

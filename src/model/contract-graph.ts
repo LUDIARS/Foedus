@@ -70,6 +70,18 @@ export interface ColumnRef {
   flag: ColumnFlag;
 }
 
+/**
+ * Cernere 汎用プロジェクトスキーマ機構 (`projectDefinitionSchema`) に外部登録される
+ * `user_data.columns`。 実体は Cernere 側の `project_data_<key>` テーブルであり、
+ * per-service ローカル schema (ServiceNode.localSchema) とは別モデル。 Foedus 自身が
+ * オーサリングする `schemas/*.json` (例: vantan_user) がこれに該当する。
+ */
+export interface ExternalProjectSchema {
+  key: string;
+  file: string; // root 起点の相対パス (evidence 表示用)
+  columns: { column: string; flag: ColumnFlag }[];
+}
+
 export interface CernereModel {
   managedProjects: ManagedProject[];
   oidcClients: OidcClient[];
@@ -85,6 +97,8 @@ export interface CernereModel {
   boundary: { holds: string[]; notHolds: string[]; docFiles: string[] };
   personalDataColumns: ColumnRef[];
   registrySource: RegistrySource;
+  /** Foedus `schemas/*.json` からオーサリングされた外部管理 Cernere プロジェクトスキーマ。 */
+  externalProjectSchemas: ExternalProjectSchema[];
 }
 
 // ── サービス manifest / schema モデル ────────────────────────────────────────
