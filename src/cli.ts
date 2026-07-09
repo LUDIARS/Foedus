@@ -1,13 +1,20 @@
 // foedus CLI — 設計書 §2.6 / §2.7。
 //
 //   foedus contract-check    --root <dir> [--repos a,b] [--cernere-db-export f.json]
-//                            [--json|--md] [--out <dir>] [--ci]
+//                            [--json|--md] [--out <dir>] [--ci] [--skip-external-schema]
 //   foedus roadmap-contract  --root <dir> [--cernere-db-export f.json] [--repos a,b]
-//                            [--out <dir>] [--dry]
+//                            [--out <dir>] [--dry] [--skip-external-schema]
 //   foedus serve             --root <dir> [--port 17340] [--host 127.0.0.1] [--cernere-db-export f]
+//                            [--skip-external-schema]
 //
 // 既定は exit 0 (レビュー用途優先)。 --ci 指定時のみ critical/high 違反で exit 1。
 // 前提 (root の存在等) は入口で検証し、 満たさなければ即エラー (fail-fast)。
+//
+// 外部管理スキーマ (Cernere schema-export) は環境変数 CERNERE_BASE_URL /
+// FOEDUS_CERNERE_EXPORT_TOKEN からライブ取得する (extract/cernere-schema-client.ts)。
+// 未設定・到達不能なら fail-fast する。 Cernere に到達できないことが分かっている
+// 環境 (例: 現状の CI) でのみ --skip-external-schema を明示指定し、 degraded 実行
+// (外部管理スキーマの棚卸し (C-DATA-08) を省略) を選べる。
 
 import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -35,10 +42,18 @@ interface CliArgs {
   dry: boolean;
   port?: number;
   host?: string;
+  skipExternalSchema: boolean;
 }
 
 function parseArgs(argv: string[]): CliArgs {
-  const args: CliArgs = { command: argv[0] ?? '', json: false, md: false, ci: false, dry: false };
+  const args: CliArgs = {
+    command: argv[0] ?? '',
+    json: false,
+    md: false,
+    ci: false,
+    dry: false,
+    skipExternalSchema: false,
+  };
   for (let i = 1; i < argv.length; i++) {
     const a = argv[i];
     switch (a) {
@@ -77,6 +92,9 @@ function parseArgs(argv: string[]): CliArgs {
       case '--dry':
         args.dry = true;
         break;
+      case '--skip-external-schema':
+        args.skipExternalSchema = true;
+        break;
       case '-h':
       case '--help':
         args.command = 'help';
@@ -94,6 +112,11 @@ const USAGE = `foedus — Cernere↔Hub 連結契約チェッカー (層B)
   foedus contract-check   --root <Ars dir> [options]
   foedus roadmap-contract --root <Ars dir> [options]   # 連結契約を事業ライン別に投影
 
+環境変数 (外部管理スキーマのライブ取得に必須。 --skip-external-schema 指定時は不要):
+  CERNERE_BASE_URL             Cernere の到達先 (例: http://localhost:8787)
+  FOEDUS_CERNERE_EXPORT_TOKEN  GET /api/admin/projects/schema-export 用の Bearer token
+                                (admin または project/service token)
+
 contract-check options:
   --root <dir>               走査ルート (例 E:/Document/Ars) [必須]
   --repos a,b,c              対象サービスを絞る (既定: corpus.ts 保有リポ全部)
@@ -102,6 +125,9 @@ contract-check options:
   --md                       CONTRACT.md を出力 (--out 無しなら stdout)
   --out <dir>                出力先ディレクトリ (violations.json + CONTRACT.md)
   --ci                       critical/high 違反があれば exit 1 (既定は exit 0)
+  --skip-external-schema     外部管理スキーマ (Cernere schema-export) のライブ取得を
+                              明示的にスキップする (Cernere に到達できない環境向け。
+                              C-DATA-08 の棚卸しが空になる degraded モード)
 
 roadmap-contract options:
   --root <dir>               走査ルート (roadmap-* を含む) [必須]
@@ -109,12 +135,14 @@ roadmap-contract options:
   --repos a,b,c              対象サービスを絞る
   --out <dir>                集約 index (roadmap-contract.json) も書き出す
   --dry                      ファイルを書かずに振り分け結果だけ表示する
+  --skip-external-schema     外部管理スキーマのライブ取得を明示的にスキップする
 
 serve options (loopback 読み取り専用ビューア):
   --root <dir>               走査ルート [必須]
   --port <n>                 待受ポート (既定 ${DEFAULT_SERVE_PORT})
   --host <addr>              bind アドレス (既定 ${DEFAULT_SERVE_HOST} = 外部公開なし)
   --cernere-db-export <f>    runtime 登録分を JSON 補完
+  --skip-external-schema     外部管理スキーマのライブ取得を明示的にスキップする
 `;
 
 /** --root / --cernere-db-export の fail-fast 入口検証。 解決済み root を返す。 */
@@ -130,6 +158,17 @@ function validateRoot(args: CliArgs): string {
     throw new Error(`--cernere-db-export が見つかりません: ${args.cernereDbExport}`);
   }
   return root;
+}
+
+/** --skip-external-schema 指定時、 degraded 実行であることを明示的に警告する。 */
+function warnIfExternalSchemaSkipped(args: CliArgs): void {
+  if (args.skipExternalSchema) {
+    process.stderr.write(
+      '[foedus] --skip-external-schema 指定: 外部管理スキーマ (Cernere schema-export) の' +
+        ' ライブ取得を省略します。C-DATA-08 (外部管理スキーマの個人データ棚卸し) は' +
+        ' 0 件になります (この実行は degraded モードです)。\n',
+    );
+  }
 }
 
 async function main(): Promise<number> {
@@ -154,12 +193,14 @@ async function main(): Promise<number> {
 
 async function runContractCheck(args: CliArgs): Promise<number> {
   const root = validateRoot(args);
+  warnIfExternalSchemaSkipped(args);
 
   // ── 抽出 → 評価 → 集計 ─────────────────────────────────────────────────────
   const graph = await buildContractGraph({
     root,
     repos: args.repos,
     cernereDbExport: args.cernereDbExport,
+    skipExternalSchema: args.skipExternalSchema,
   });
   const all = evaluateAll(graph);
   const report = buildReport(graph, all);
@@ -199,11 +240,13 @@ async function runContractCheck(args: CliArgs): Promise<number> {
  */
 async function runRoadmapContract(args: CliArgs): Promise<number> {
   const root = validateRoot(args);
+  warnIfExternalSchemaSkipped(args);
 
   const graph = await buildContractGraph({
     root,
     repos: args.repos,
     cernereDbExport: args.cernereDbExport,
+    skipExternalSchema: args.skipExternalSchema,
   });
   const all = evaluateAll(graph);
 
@@ -274,11 +317,13 @@ async function runRoadmapContract(args: CliArgs): Promise<number> {
  */
 async function runServe(args: CliArgs): Promise<number> {
   const root = validateRoot(args);
+  warnIfExternalSchemaSkipped(args);
   await serve({
     root,
     port: args.port ?? DEFAULT_SERVE_PORT,
     host: args.host ?? DEFAULT_SERVE_HOST,
     cernereDbExport: args.cernereDbExport,
+    skipExternalSchema: args.skipExternalSchema,
   });
   return 0;
 }

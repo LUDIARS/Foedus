@@ -4,6 +4,10 @@
 // 「被レビュー対象の dev server」ではなく **生成済み静的解析結果の閲覧専用ビューア**。
 // 毎リクエストで contract-check / roadmap-contract と同一パイプラインを再実行して
 // 最新を返す (Hono/DB 不要、 node:http のみ)。 既定で 127.0.0.1 bind (外部公開なし)。
+//
+// 外部管理スキーマ (Cernere schema-export) はリクエストのたびにライブ取得するため、
+// Cernere に到達できない環境では skipExternalSchema を明示指定しない限り各リクエストが
+// 500 で失敗する (無言で古い/空のデータを返さない)。
 
 import { createServer } from 'node:http';
 import { buildContractGraph } from '../extract/index.ts';
@@ -19,6 +23,9 @@ export interface ServeOptions {
   port: number;
   host: string;
   cernereDbExport?: string;
+  /** true なら外部管理スキーマ (Cernere schema-export) のライブ取得をスキップする
+   *  (明示指定時のみ; 既定は false = 到達できなければ 500)。 */
+  skipExternalSchema?: boolean;
 }
 
 interface Computed {
@@ -33,6 +40,7 @@ async function compute(opts: ServeOptions): Promise<Computed> {
   const graph = await buildContractGraph({
     root: opts.root,
     cernereDbExport: opts.cernereDbExport,
+    skipExternalSchema: opts.skipExternalSchema,
   });
   const all = evaluateAll(graph);
   const report = buildReport(graph, all);
