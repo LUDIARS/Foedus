@@ -25,9 +25,14 @@ describe('contract pipeline (fixtures)', () => {
     skipped = all.filter((v) => v.status === 'skipped');
   });
 
-  it('対象サービスを corpus.ts から発見 (Aedilis / Leak)', () => {
-    expect(graph.services.map((s) => s.repo).sort()).toEqual(['Aedilis', 'Leak']);
-    expect(graph.services.every((s) => s.manifestSource === 'literal-eval')).toBe(true);
+  it('対象サービスを corpus.ts から発見し、静的に読めない manifest は skipped にする', () => {
+    expect(graph.services.map((s) => s.repo).sort()).toEqual(['Aedilis', 'Leak', 'Unextractable']);
+    expect(graph.services.filter((s) => s.repo !== 'Unextractable').every((s) => s.manifestSource === 'static-ast')).toBe(true);
+    expect(graph.services.find((s) => s.repo === 'Unextractable')).toMatchObject({
+      manifest: null,
+      manifestSource: 'skipped',
+      manifestSkipReason: 'non-literal-expression',
+    });
   });
 
   it('H-LINK-01: aedilis が managed_projects に不在で発火 (memoria=leak は不発)', () => {

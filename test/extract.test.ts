@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { existsSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { extractCernereRegistry } from '../src/extract/cernere-registry.ts';
@@ -6,6 +8,9 @@ import { extractCernereBoundary } from '../src/extract/cernere-boundary.ts';
 import { extractServiceManifest } from '../src/extract/service-manifest.ts';
 import { extractServiceSchema } from '../src/extract/service-schema.ts';
 import { extractHubConfig } from '../src/extract/hub-config.ts';
+import { buildContractGraph } from '../src/extract/index.ts';
+import { buildReport } from '../src/report/violations.ts';
+import { renderContractMd } from '../src/report/render-md.ts';
 
 const ROOT = fileURLToPath(new URL('./fixtures/root', import.meta.url));
 
@@ -58,16 +63,62 @@ describe('cernere-boundary', () => {
   });
 });
 
-describe('service-manifest (esbuild eval)', () => {
-  it('Aedilis の corpusManifest をリテラル評価で抽出', async () => {
+describe('service-manifest (static AST)', () => {
+  it('Aedilis の corpusManifest をリテラルだけから抽出', async () => {
     const file = join(ROOT, 'Aedilis', 'server', 'corpus.ts');
     const { manifest, source } = await extractServiceManifest(file);
-    expect(source).toBe('literal-eval');
+    expect(source).toBe('static-ast');
     expect(manifest?.service).toBe('aedilis');
     expect(manifest?.corpusApi).toBe(2);
     expect(manifest?.auth).toBe('cernere-project-token');
     expect(manifest?.cernereProjectKey).toBe('aedilis');
     expect(manifest?.panels[0]?.kind).toBe('declarative');
+  });
+
+  it('top-level token exfiltration code is never executed', async () => {
+    const marker = join(tmpdir(), `foedus-manifest-attack-${Date.now()}.txt`);
+    const oldMarker = process.env.FOEDUS_MANIFEST_ATTACK_MARKER;
+    const oldToken = process.env.FOEDUS_CERNERE_EXPORT_TOKEN;
+    process.env.FOEDUS_MANIFEST_ATTACK_MARKER = marker;
+    process.env.FOEDUS_CERNERE_EXPORT_TOKEN = 'test-secret-must-not-leak';
+
+    try {
+      const file = fileURLToPath(new URL('./fixtures/malicious-corpus.ts', import.meta.url));
+      const result = await extractServiceManifest(file);
+      expect(result).toMatchObject({
+        source: 'static-ast',
+        manifest: { service: 'malicious-fixture' },
+      });
+      expect(existsSync(marker)).toBe(false);
+    } finally {
+      rmSync(marker, { force: true });
+      if (oldMarker === undefined) delete process.env.FOEDUS_MANIFEST_ATTACK_MARKER;
+      else process.env.FOEDUS_MANIFEST_ATTACK_MARKER = oldMarker;
+      if (oldToken === undefined) delete process.env.FOEDUS_CERNERE_EXPORT_TOKEN;
+      else process.env.FOEDUS_CERNERE_EXPORT_TOKEN = oldToken;
+    }
+  });
+
+  it('records a machine-readable degraded scan when a manifest is non-literal', async () => {
+    const graph = await buildContractGraph({
+      root: ROOT,
+      repos: ['Unextractable'],
+      skipExternalSchema: true,
+    });
+    const report = buildReport(graph, []);
+    expect(report.manifestScan).toEqual({
+      status: 'degraded',
+      scanned: 1,
+      extracted: 0,
+      skipped: [
+        {
+          repo: 'Unextractable',
+          manifestFile: 'Unextractable/server/corpus.ts',
+          reason: 'non-literal-expression',
+        },
+      ],
+    });
+    expect(renderContractMd(report)).toContain('manifest scan: **degraded**');
   });
 });
 

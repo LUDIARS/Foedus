@@ -22,12 +22,12 @@
 |---|---|---|
 | cernere-registry | `Cernere/migrations/*.sql` の INSERT (managed_projects / oidc_clients / relay_pairs) | `--cernere-db-export` で補完。無ければ oidc_clients は `runtime-unknown` |
 | cernere-boundary | `Cernere/spec/data/*.md` の持つ/持たない + `schema.ts` の機微カラム | 境界文書欠落は C-DATA-07 skipped |
-| service-manifest | 各 `server/corpus.ts` の `export const corpusManifest` | esbuild bundle→import が主、正規表現が副、両方不能なら `missing` |
+| service-manifest | 各 `server/corpus.ts` の `export const corpusManifest` | TypeScript AST で純粋なリテラルだけを抽出。評価・import は行わず、読めない manifest は理由付き `skipped` |
 | service-schema | 各 `server/db.ts` の CREATE TABLE | 解析不能テーブルは tables:[] |
 | hub-config | Corpus の token-mode/discovery/supportedCorpusApi + VantanHub plugins の connector/`*_BASE_URL` | env 未設定は `envSet:false` (degraded) |
 
-`corpusManifest` は純リテラル前提。副作用 import は stub プラグインで空モジュール化し、
-評価不能時のみ正規表現フォールバック (manifestSource を記録)。
+`corpusManifest` は純粋なリテラルのみ受理する。走査対象は信頼しないため bundle / import / eval は一切行わず、
+非リテラル・構文不正・不正値は machine-readable な `manifestScan.status:'degraded'` と `skipped[].reason` に記録する。
 
 ## ルール (src/rules/)
 
@@ -39,10 +39,10 @@
 
 ## 出力 (src/report/)
 
-- `violations.json`: `{date, scope, reposScanned, registrySource, grade, violations[], skipped[], bySeverity, counts}`
+- `violations.json`: `{date, scope, reposScanned, registrySource, grade, violations[], skipped[], bySeverity, counts, manifestScan}`
 - `CONTRACT.md`: severity 別表 + skipped 別節
 - grade: critical≥1→D / high≥1→C / medium|low→B / 0→A (skipped は減点しない)
-- 終了コード: `--ci` 指定時のみ critical/high で exit 1。既定は常に 0
+- 終了コード: `--ci` 指定時は critical/high または `manifestScan.status:'degraded'` で exit 1。既定はレポートを出力して 0
 
 ## CLI
 

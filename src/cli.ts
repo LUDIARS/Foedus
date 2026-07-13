@@ -7,7 +7,8 @@
 //   foedus serve             --root <dir> [--port 17340] [--host 127.0.0.1] [--cernere-db-export f]
 //                            [--skip-external-schema]
 //
-// 既定は exit 0 (レビュー用途優先)。 --ci 指定時のみ critical/high 違反で exit 1。
+// 既定は exit 0 (レビュー用途優先)。 --ci 指定時は critical/high 違反または
+// manifest 抽出が degraded なら exit 1。
 // 前提 (root の存在等) は入口で検証し、 満たさなければ即エラー (fail-fast)。
 //
 // 外部管理スキーマ (Cernere schema-export) は環境変数 CERNERE_BASE_URL /
@@ -124,7 +125,7 @@ contract-check options:
   --json                     violations.json を出力 (--out 無しなら stdout)
   --md                       CONTRACT.md を出力 (--out 無しなら stdout)
   --out <dir>                出力先ディレクトリ (violations.json + CONTRACT.md)
-  --ci                       critical/high 違反があれば exit 1 (既定は exit 0)
+  --ci                       critical/high 違反または manifest 抽出が degraded なら exit 1 (既定は exit 0)
   --skip-external-schema     外部管理スキーマ (Cernere schema-export) のライブ取得を
                               明示的にスキップする (Cernere に到達できない環境向け。
                               C-DATA-08 の棚卸しが空になる degraded モード)
@@ -227,7 +228,12 @@ async function runContractCheck(args: CliArgs): Promise<number> {
   }
 
   // ── 終了コード ──────────────────────────────────────────────────────────
-  if (args.ci && (report.bySeverity.critical > 0 || report.bySeverity.high > 0)) {
+  if (
+    args.ci &&
+    (report.bySeverity.critical > 0 ||
+      report.bySeverity.high > 0 ||
+      report.manifestScan.status === 'degraded')
+  ) {
     return 1;
   }
   return 0;
@@ -336,6 +342,9 @@ function printSummary(report: ReturnType<typeof buildReport>): void {
     `violations: ${report.counts.violations} (critical=${s.critical} high=${s.high} medium=${s.medium} low=${s.low})`,
   );
   out.push(`skipped: ${report.counts.skipped}`);
+  out.push(
+    `manifest scan: ${report.manifestScan.status} (extracted=${report.manifestScan.extracted} skipped=${report.manifestScan.skipped.length})`,
+  );
   out.push('');
   for (const v of report.violations) {
     out.push(`  [${v.severity}] ${v.id} ${v.subject}`);
