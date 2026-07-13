@@ -54,7 +54,7 @@ C-DATA-08 を省略) を選べる。
 | `--cernere-db-export <f.json>` | runtime 登録分 (managed_projects / oidc_clients / relay_pairs) を JSON 補完 |
 | `--json` / `--md` | 片方のみ出力 (`--out` 無しなら stdout) |
 | `--out <dir>` | `violations.json` + `CONTRACT.md` を出力 |
-| `--ci` | critical/high 違反があれば exit 1 (既定は常に 0) |
+| `--ci` | critical/high 違反または manifest 抽出が degraded なら exit 1 (既定は常に 0) |
 | `--skip-external-schema` | 外部管理スキーマ (Cernere schema-export) のライブ取得を明示スキップ (Cernere 未到達環境向け degraded モード) |
 
 `--cernere-db-export` の JSON 形:
@@ -135,7 +135,7 @@ LUDIARS の各サービスを sibling 配置で checkout し、Foedus を build 
   `FOEDUS_CERNERE_EXPORT_TOKEN`、repository/organization variables に
   `CERNERE_BASE_URL` を設定すれば自動的にライブ取得へ切り替わる (人間の対応が
   必要な既知のギャップとしてワークフロー冒頭にも明記してある)。
-- **`--ci` 挙動**: critical/high 違反で `exit 1` → ジョブ fail (ゲート)。
+- **`--ci` 挙動**: critical/high 違反または manifest 抽出の `degraded` で `exit 1` → ジョブ fail (ゲート)。
   `violations.json` / `CONTRACT.md` は `actions/upload-artifact` で
   `foedus-contract-report` として常に保存する。
 - 将来 high 検出時に Discord 通知を足す余地を workflow のコメントに残してある。

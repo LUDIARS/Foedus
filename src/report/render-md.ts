@@ -15,6 +15,9 @@ export function renderContractMd(r: ContractReport): string {
   lines.push(`> 生成: ${r.date} / scope: ${r.scope} / 総合グレード: **${r.grade}**`);
   lines.push('>');
   lines.push(
+    `> manifest scan: **${r.manifestScan.status}** (${r.manifestScan.extracted}/${r.manifestScan.scanned} extracted, ${r.manifestScan.skipped.length} skipped)`,
+  );
+  lines.push(
     `> registry: ${r.registrySource} / oidc_clients: ${r.oidcClientsSource} / 走査リポ: ${r.reposScanned.join(', ')}`,
   );
   lines.push('');

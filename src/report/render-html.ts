@@ -128,6 +128,7 @@ export function renderContractHtml(
   </header>
 
   <div class="kpis">
+    <div class="kpi"><div class="label">manifest scan</div><div class="val" style="font-size:14px">${esc(report.manifestScan.status)} (${report.manifestScan.extracted}/${report.manifestScan.scanned})</div></div>
     <div class="kpi"><div class="label">違反</div><div class="val">${report.counts.violations}</div></div>
     <div class="kpi"><div class="label">未検証 (skipped)</div><div class="val">${report.counts.skipped}</div></div>
     <div class="kpi"><div class="label">critical / high</div><div class="val">${s.critical} / ${s.high}</div></div>

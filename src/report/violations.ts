@@ -6,6 +6,7 @@
 import type {
   ContractGraph,
   ExternalProjectSchema,
+  ManifestSkipReason,
   Severity,
   Violation,
 } from '../model/contract-graph.ts';
@@ -29,6 +30,13 @@ export interface ContractReport {
   skipped: Violation[]; // status='skipped' のみ
   bySeverity: SeverityCounts;
   counts: { violations: number; skipped: number };
+  /** Extraction is degraded whenever any discovered corpus.ts was skipped. */
+  manifestScan: {
+    status: 'complete' | 'degraded';
+    scanned: number;
+    extracted: number;
+    skipped: { repo: string; manifestFile?: string; reason: ManifestSkipReason }[];
+  };
   /** Foedus `schemas/*.json` からオーサリングされた外部管理 Cernere プロジェクトスキーマ。 */
   externalProjectSchemas: ExternalProjectSchema[];
 }
@@ -40,6 +48,15 @@ export function buildReport(
   const violations = all.filter((v) => v.status === 'violation');
   const skipped = all.filter((v) => v.status === 'skipped');
   const bySeverity = countBySeverity(violations);
+  const manifestSkipped = g.services
+    .filter((service) => service.manifestSource === 'skipped')
+    .map((service) => ({
+      repo: service.repo,
+      manifestFile: service.manifestFile,
+      // A skipped source is constructed with a reason by the extractor. Keep a
+      // defensive fallback so reports can never claim a complete scan.
+      reason: service.manifestSkipReason ?? 'invalid-manifest',
+    }));
   return {
     date: g.date,
     scope: 'Cernere+Hub',
@@ -51,6 +68,12 @@ export function buildReport(
     skipped,
     bySeverity,
     counts: { violations: violations.length, skipped: skipped.length },
+    manifestScan: {
+      status: manifestSkipped.length === 0 ? 'complete' : 'degraded',
+      scanned: g.services.length,
+      extracted: g.services.length - manifestSkipped.length,
+      skipped: manifestSkipped,
+    },
     externalProjectSchemas: g.cernere.externalProjectSchemas,
   };
 }

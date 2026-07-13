@@ -141,7 +141,16 @@ export interface Manifest {
   panels: ManifestPanel[];
 }
 
-export type ManifestSource = 'literal-eval' | 'ast' | 'static-file' | 'missing';
+/** `server/corpus.ts` manifest extraction never evaluates repository code. */
+export type ManifestSource = 'static-ast' | 'skipped';
+
+/** A machine-readable explanation when a manifest cannot be safely extracted. */
+export type ManifestSkipReason =
+  | 'file-read-error'
+  | 'syntax-error'
+  | 'manifest-not-found'
+  | 'non-literal-expression'
+  | 'invalid-manifest';
 
 export interface ServiceTable {
   name: string;
@@ -154,6 +163,8 @@ export interface ServiceNode {
   manifestFile?: string;
   manifest: Manifest | null;
   manifestSource: ManifestSource;
+  /** Present exactly when manifestSource is 'skipped'. */
+  manifestSkipReason?: ManifestSkipReason;
   localSchema: { tables: ServiceTable[]; schemaFile?: string };
 }
 

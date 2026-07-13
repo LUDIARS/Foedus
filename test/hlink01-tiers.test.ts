@@ -50,7 +50,7 @@ function graph(opts: {
         repo: opts.projectKey,
         manifestFile: `${opts.projectKey}/server/corpus.ts`,
         manifest,
-        manifestSource: 'literal-eval',
+        manifestSource: 'static-ast',
         localSchema: { tables: [] },
       },
     ],

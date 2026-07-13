@@ -74,13 +74,14 @@ export async function buildContractGraph(
   for (const repo of serviceRepos) {
     const repoAbs = join(root, repo);
     const corpusFile = join(repoAbs, 'server', 'corpus.ts');
-    const { manifest, source } = await extractServiceManifest(corpusFile);
+    const { manifest, source, skipReason } = await extractServiceManifest(corpusFile);
     const schema = extractServiceSchema(repoAbs);
     services.push({
       repo,
       manifestFile: rel(root, corpusFile),
       manifest,
       manifestSource: source,
+      manifestSkipReason: skipReason,
       localSchema: {
         tables: schema.tables,
         schemaFile: schema.schemaFile ? rel(root, schema.schemaFile) : undefined,
